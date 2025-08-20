@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>TaskPulse — Personal To-Do</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>html,body{height:100%}body{margin:0}</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React 18 UMD + Babel (for in-browser JSX) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const {useState, useEffect, useMemo} = React;
+
+    // ---------- Helpers ----------
+    const LS_KEY = 'taskpulse-v1';
+    const nowISO = () => new Date().toISOString();
+    const startOfDay = d => { const x=new Date(d); x.setHours(0,0,0,0); return x; };
+    const isSameDay = (a,b) => startOfDay(a).getTime() === startOfDay(b).getTime();
+    const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+    const fmtDate = d => new Date(d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+
+    // ---------- Demo data ----------
+    const demoProjects = [
+      { id:'p1', name:'Personal', color:'#29B1A8' },
+      { id:'p2', name:'Work',     color:'#7C5CFF' },
+    ];
+    const demoTasks = [
+      { id:'t1', title:'Plan week', status:'Todo',  priority:'Med',  project:'p1', tags:['planning'], dueDate:addDays(new Date(),0).toISOString(), notes:'', estimateMins:20, actualMins:0, isFocus:true,  focusOrder:Date.now(), completedAt:null, archived:false, rollovers:0, createdAt:nowISO() },
+      { id:'t2', title:'Draft outreach email', status:'Doing', priority:'High', project:'p2', tags:['email'],    dueDate:addDays(new Date(),1).toISOString(), notes:'', estimateMins:30, actualMins:0, isFocus:false, focusOrder:0,       completedAt:null, archived:false, rollovers:0, createdAt:nowISO() },
+      { id:'t3', title:'Clean balcony',        status:'Todo',  priority:'Low',  project:'p1', tags:['home'],     dueDate:addDays(new Date(),2).toISOString(), notes:'', estimateMins:25, actualMins:0, isFocus:false, focusOrder:0,       completedAt:null, archived:false, rollovers:0, createdAt:nowISO() },
+    ];
+
+    const loadState = () => {
+      try { return JSON.parse(localStorage.getItem(LS_KEY)) || {tasks:demoTasks, projects:demoProjects, lastRollover:null, theme:'light'}; }
+      catch { return {tasks:demoTasks, projects:demoProjects, lastRollover:null, theme:'light'}; }
+    };
+    const saveState = s => localStorage.setItem(LS_KEY, JSON.stringify(s));
+
+    // ---------- Reusable bits ----------
+    const Tag = ({children}) => <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">{children}</span>;
+
+    const TaskItem = ({t, updateTask, deleteTask, projects}) => (
+      <div className="group flex items-start gap-3 rounded-xl border p-3 hover:shadow-sm bg-white/70 dark:bg-zinc-900/70">
+        <input type="checkbox" className="mt-1 h-4 w-4"
+          checked={t.status==='Done'}
+          onChange={e=>updateTask(t.id,{status:e.target.checked?'Done':'Todo',completedAt:e.target.checked?nowISO():null})}/>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <input className="w-full bg-transparent outline-none font-medium"
+                   value={t.title} onChange={e=>updateTask(t.id,{title:e.target.value})}/>
+            {t.priority && <Tag>{t.priority}</Tag>}
+            {t.isFocus && <Tag>Focus</Tag>}
+          </div>
+          <div className="mt-1 text-xs text-zinc-500 flex flex-wrap items-center gap-2">
+            {t.project && <span>Project: {projects.find(p=>p.id===t.project)?.name}</span>}
+            {t.dueDate && <span>Due: {fmtDate(t.dueDate)}</span>}
+            {t.tags?.length ? <span>#{t.tags.join(' #')}</span> : null}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="rounded-lg border px-2 py-1 text-xs"
+                  onClick={()=>updateTask(t.id,{isFocus:!t.isFocus, focusOrder:t.isFocus?0:Date.now()})}>{t.isFocus?'Unpin':'Pin'}</button>
+          <button className="rounded-lg border px-2 py-1 text-xs" onClick={()=>deleteTask(t.id)}>Delete</button>
+        </div>
+      </div>
+    );
+
+    const Section = ({title, extra, children}) => (
+      <section className="mt-6">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">{title}</h3>{extra}
+        </div>
+        <div className="space-y-3">{children}</div>
+      </section>
+    );
+
+    function ReviewModal({onClose, tasks, updateTask}) {
+      const today = startOfDay(new Date());
+      const doneThisWeek = tasks.filter(t=>t.status==='Done'&&t.completedAt&&new Date(t.completedAt)>=addDays(today,-6)&&!t.archived);
+      const overdue = tasks.filter(t=>t.status!=='Done'&&t.dueDate&&new Date(t.dueDate)<today&&!t.archived);
+      const stale = tasks.filter(t=>t.status!=='Done'&&!t.archived&&(!t.dueDate||new Date(t.createdAt)<addDays(today,-14)));
+
+      const archiveDone = ()=>{ doneThisWeek.forEach(t=>updateTask(t.id,{archived:true})); setStep(2); };
+      const resched = when=>{
+        const base=startOfDay(new Date()); let target=new Date(base);
+        if(when==='tomorrow') target=addDays(base,1);
+        if(when==='nextWeek') target=addDays(base,7-(base.getDay()||7)+1); // next Monday
+        target.setHours(9,0,0,0);
+        overdue.forEach(t=>updateTask(t.id,{dueDate:target.toISOString(), rollovers:(t.rollovers||0)+1}));
+        setStep(3);
+      };
+      const archiveStale = ()=>{ stale.forEach(t=>updateTask(t.id,{archived:true})); setStep(4); };
+      const setFocus = ()=>{
+        const candidates = tasks.filter(t=>!t.archived&&t.status!=='Done')
+          .sort((a,b)=>(new Date(a.dueDate||'2100-01-01')-new Date(b.dueDate||'2100-01-01'))||({High:0,Med:1,Low:2}[a.priority]-{High:0,Med:1,Low:2}[b.priority]));
+        const current = tasks.filter(t=>t.isFocus).length;
+        const toPin = Math.max(0,6-current);
+        candidates.slice(0,toPin).forEach((t,i)=>updateTask(t.id,{isFocus:true, focusOrder:Date.now()+i}));
+        onClose();
+      };
+
+      const [step,setStep]=useState(1);
+      return (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl border bg-white p-5 dark:bg-zinc-950">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-lg font-semibold">Weekly Review</div>
+              <button className="text-sm text-zinc-500" onClick={onClose}>Close</button>
+            </div>
+            {step===1 && (<div>
+              <div className="mb-2 font-medium">1) Close Done (this week)</div>
+              <p className="text-sm text-zinc-500 mb-3">Archive {doneThisWeek.length} completed tasks.</p>
+              <button className="rounded-lg bg-black text-white px-4 py-2" onClick={archiveDone}>Archive {doneThisWeek.length}</button>
+            </div>)}
+            {step===2 && (<div>
+              <div className="mb-2 font-medium">2) Reschedule Overdue</div>
+              <p className="text-sm text-zinc-500 mb-3">{overdue.length} tasks are overdue.</p>
+              <div className="flex gap-2">
+                <button className="rounded-lg border px-3 py-1" onClick={()=>resched('tomorrow')}>Tomorrow 9:00</button>
+                <button className="rounded-lg border px-3 py-1" onClick={()=>resched('nextWeek')}>Next Monday 9:00</button>
+              </div>
+            </div>)}
+            {step===3 && (<div>
+              <div className="mb-2 font-medium">3) Clean Stale</div>
+              <p className="text-sm text-zinc-500 mb-3">Archive {stale.length} stale tasks (no due date or ≥14 days old).</p>
+              <button className="rounded-lg border px-3 py-1" onClick={archiveStale}>Archive Stale</button>
+            </div>)}
+            {step===4 && (<div>
+              <div className="mb-2 font-medium">4) Set Focus-6</div>
+              <p className="text-sm text-zinc-500 mb-3">We will auto-fill remaining Focus slots with your top items.</p>
+              <button className="rounded-lg bg-black text-white px-4 py-2" onClick={setFocus}>Fill Focus</button>
+            </div>)}
+          </div>
+        </div>
+      );
+    }
+
+    // ---------- App ----------
+    function App(){
+      const [state,setState]=useState(loadState());
+      const [tab,setTab]=useState('Today');
+      const [query,setQuery]=useState('');
+      const [showReview,setShowReview]=useState(false);
+      const [dark,setDark]=useState(state.theme==='dark');
+
+      useEffect(()=>{ saveState({...state, theme:dark?'dark':'light'}); },[state, dark]);
+
+      // Auto-rollover at 7pm (while the app is open)
+      useEffect(()=>{
+        const doRollover=()=>{
+          const todayStart=startOfDay(new Date());
+          const todayEnd=new Date(todayStart); todayEnd.setHours(23,59,59,999);
+          const updated=state.tasks.map(t=>{
+            if(!t.archived && t.status!=='Done' && t.dueDate){
+              const dd=new Date(t.dueDate);
+              if(dd>=todayStart && dd<=todayEnd){
+                const tomorrow=addDays(todayStart,1); tomorrow.setHours(9,0,0,0);
+                return {...t, dueDate:tomorrow.toISOString(), rollovers:(t.rollovers||0)+1};
+              }
+            }
+            return t;
+          });
+          setState(s=>({...s, tasks:updated, lastRollover:nowISO()}));
+        };
+        const now=new Date(); const seven=new Date(); seven.setHours(19,0,0,0);
+        if(!(state.lastRollover && isSameDay(state.lastRollover, now)) && now>=seven) doRollover();
+        const id=setInterval(()=>{
+          const n=new Date();
+          if(!state.lastRollover || !isSameDay(state.lastRollover, n)){
+            if(n.getHours()===19 && n.getMinutes()===0) doRollover();
+          }
+        },60000);
+        return ()=>clearInterval(id);
+      },[state.lastRollover, state.tasks]);
+
+      const tasks = state.tasks.filter(t=>!t.archived);
+      const projects = state.projects;
+
+      const addTask = partial=>{
+        const id = (crypto && crypto.randomUUID)? crypto.randomUUID(): Math.random().toString(36).slice(2);
+        const t={ id, title:'', status:'Todo', priority:'Med', project:projects[0]?.id, tags:[], dueDate:null, notes:'', estimateMins:0, actualMins:0, isFocus:false, focusOrder:0, completedAt:null, archived:false, rollovers:0, createdAt:nowISO(), ...partial };
+        setState(s=>({...s, tasks:[t, ...s.tasks]}));
+      };
+      const updateTask = (id,patch)=>setState(s=>({...s, tasks:s.tasks.map(t=>t.id===id?{...t, ...patch}:t)}));
+      const deleteTask = id=>setState(s=>({...s, tasks:s.tasks.filter(t=>t.id!==id)}));
+
+      const today = startOfDay(new Date());
+      const week = Array.from({length:7},(_,i)=>addDays(today,i));
+
+      const filtered = useMemo(()=>{
+        if(!query) return tasks;
+        const q=query.toLowerCase();
+        return tasks.filter(t => (t.title+' '+(t.notes||'')+' '+(t.tags||[]).join(' ')).toLowerCase().includes(q));
+      },[query, tasks]);
+
+      const todayTasks = filtered.filter(t=>t.status!=='Done' && t.dueDate && isSameDay(new Date(t.dueDate), today));
+      const overdueTasks = filtered.filter(t=>t.status!=='Done' && t.dueDate && new Date(t.dueDate) < today);
+      const focusTasks = filtered.filter(t=>t.isFocus).sort((a,b)=>(a.focusOrder||0)-(b.focusOrder||0)).slice(0,6);
+
+      // CSV
+      const exportCSV = ()=>{
+        const fields=['id','title','status','priority','project','tags','dueDate','estimateMins','actualMins','isFocus','completedAt','archived','rollovers','createdAt'];
+        const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+        const rows=[fields.join(',')].concat(tasks.map(t=>fields.map(f=>esc(Array.isArray(t[f])? t[f].join('|'):t[f])).join(',')));
+        const blob=new Blob([rows.join('\n')],{type:'text/csv'}); const url=URL.createObjectURL(blob);
+        const a=document.createElement('a'); a.href=url; a.download=`tasks-${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(url);
+      };
+      const importCSV = e=>{
+        const file=e.target.files?.[0]; if(!file) return;
+        const r=new FileReader(); r.onload=()=>{
+          const text=r.result; const [header,...lines]=text.split(/\r?\n/).filter(Boolean);
+          const fields=header.split(','); const parseCell=s=>s.replace(/^"|"$/g,'').replace(/""/g,'"');
+          const items=lines.map(line=>{ const cells=line.match(/"(?:[^"]|"")*"|[^,]+/g)||[]; const o={}; fields.forEach((f,i)=>o[f]=parseCell(cells[i]||'')); if(o.tags) o.tags=o.tags.split('|').filter(Boolean); return o; });
+          setState(s=>({...s, tasks: items.map(t=>({...t, isFocus:t.isFocus==='true'||t.isFocus===true}))}));
+        }; r.readAsText(file);
+      };
+
+      // Views
+      const AddBar = ()=>{
+        const [title,setTitle]=useState(''); const [due,setDue]=useState(''); const [priority,setPriority]=useState('Med'); const [project,setProject]=useState(projects[0]?.id||'');
+        return (
+          <div className="flex flex-col md:flex-row gap-2 md:items-end rounded-2xl border p-3 bg-white/70 dark:bg-zinc-900/70">
+            <div className="flex-1">
+              <label className="text-xs text-zinc-500">Title</label>
+              <input className="w-full rounded-lg border p-2 bg-white dark:bg-zinc-900" placeholder="Add a task..." value={title} onChange={e=>setTitle(e.target.value)}/>
+            </div>
+            <div><label className="text-xs text-zinc-500">Due</label><input type="date" className="rounded-lg border p-2 bg-white dark:bg-zinc-900" value={due} onChange={e=>setDue(e.target.value)}/></div>
+            <div><label className="text-xs text-zinc-500">Priority</label>
+              <select className="rounded-lg border p-2 bg-white dark:bg-zinc-900" value={priority} onChange={e=>setPriority(e.target.value)}>
+                <option>Low</option><option>Med</option><option>High</option>
+              </select>
+            </div>
+            <div><label className="text-xs text-zinc-500">Project</label>
+              <select className="rounded-lg border p-2 bg-white dark:bg-zinc-900" value={project} onChange={e=>setProject(e.target.value)}>
+                {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <button className="rounded-lg bg-black text-white px-4 py-2"
+              onClick={()=>{ if(!title.trim()) return; const d=due?new Date(due):null; addTask({title,priority,project,dueDate:d?d.toISOString():null}); setTitle(''); setDue(''); }}>
+              Add
+            </button>
+          </div>
+        );
+      };
+
+      const TodayVi

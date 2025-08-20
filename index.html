@@ -8,21 +8,21 @@
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- React 18 UMD -->
-  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
-
-  <!-- Babel for in-browser JSX transform -->
-  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+  <!-- Preact + Hooks + HTM (no Babel, no eval) -->
+  <script src="https://cdn.jsdelivr.net/npm/preact@10.23.2/dist/preact.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/preact@10.23.2/hooks/dist/hooks.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
 
   <style>html,body{height:100%}body{margin:0}</style>
 </head>
-<body>
+<body class="bg-zinc-100 text-zinc-900">
   <div id="root"></div>
 
-  <!-- App -->
-  <script type="text/babel" data-presets="env,react">
-    const {useState, useEffect, useMemo} = React;
+  <script>
+    // Aliases
+    const { h, render } = preact;
+    const { useState, useEffect, useMemo } = preactHooks;
+    const html = htm.bind(h);
 
     // ---------- Helpers ----------
     const LS_KEY = 'taskpulse-v1';
@@ -49,55 +49,57 @@
     };
     const saveState = s => localStorage.setItem(LS_KEY, JSON.stringify(s));
 
-    // ---------- Reusable bits ----------
-    const Tag = ({children}) => <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">{children}</span>;
+    // ---------- Tiny UI atoms ----------
+    const Tag = ({children}) => html`<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">${children}</span>`;
 
-    const TaskItem = ({t, updateTask, deleteTask, projects}) => (
-      <div className="group flex items-start gap-3 rounded-xl border p-3 hover:shadow-sm bg-white/70 dark:bg-zinc-900/70">
-        <input type="checkbox" className="mt-1 h-4 w-4"
-          checked={t.status==='Done'}
-          onChange={e=>updateTask(t.id,{status:e.target.checked?'Done':'Todo',completedAt:e.target.checked?nowISO():null})}/>
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <input className="w-full bg-transparent outline-none font-medium"
-                   value={t.title} onChange={e=>updateTask(t.id,{title:e.target.value})}/>
-            {t.priority && <Tag>{t.priority}</Tag>}
-            {t.isFocus && <Tag>Focus</Tag>}
+    const TaskItem = ({t, updateTask, deleteTask, projects}) => html`
+      <div class="group flex items-start gap-3 rounded-xl border p-3 hover:shadow-sm bg-white/70">
+        <input type="checkbox" class="mt-1 h-4 w-4"
+          .checked=${t.status==='Done'}
+          onChange=${e=>updateTask(t.id,{status:e.target.checked?'Done':'Todo',completedAt:e.target.checked?nowISO():null})}/>
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <input class="w-full bg-transparent outline-none font-medium"
+                   .value=${t.title} onInput=${e=>updateTask(t.id,{title:e.target.value})}/>
+            ${t.priority && html`<${Tag}>${t.priority}<//>`}
+            ${t.isFocus && html`<${Tag}>Focus<//>`}
           </div>
-          <div className="mt-1 text-xs text-zinc-500 flex flex-wrap items-center gap-2">
-            {t.project && <span>Project: {projects.find(p=>p.id===t.project)?.name}</span>}
-            {t.dueDate && <span>Due: {fmtDate(t.dueDate)}</span>}
-            {t.tags?.length ? <span>#{t.tags.join(' #')}</span> : null}
+          <div class="mt-1 text-xs text-zinc-500 flex flex-wrap items-center gap-2">
+            ${t.project && html`<span>Project: ${projects.find(p=>p.id===t.project)?.name}</span>`}
+            ${t.dueDate && html`<span>Due: ${fmtDate(t.dueDate)}</span>`}
+            ${t.tags?.length ? html`<span>#${t.tags.join(' #')}</span>` : null}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button className="rounded-lg border px-2 py-1 text-xs"
-                  onClick={()=>updateTask(t.id,{isFocus:!t.isFocus, focusOrder:t.isFocus?0:Date.now()})}>{t.isFocus?'Unpin':'Pin'}</button>
-          <button className="rounded-lg border px-2 py-1 text-xs" onClick={()=>deleteTask(t.id)}>Delete</button>
+        <div class="flex items-center gap-2">
+          <button class="rounded-lg border px-2 py-1 text-xs"
+                  onClick=${()=>updateTask(t.id,{isFocus:!t.isFocus, focusOrder:t.isFocus?0:Date.now()})}>${t.isFocus?'Unpin':'Pin'}</button>
+          <button class="rounded-lg border px-2 py-1 text-xs" onClick=${()=>deleteTask(t.id)}>Delete</button>
         </div>
       </div>
-    );
+    `;
 
-    const Section = ({title, extra, children}) => (
-      <section className="mt-6">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-zinc-500">{title}</h3>{extra}
+    const Section = ({title, extra, children}) => html`
+      <section class="mt-6">
+        <div class="mb-2 flex items-center justify-between">
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500">${title}</h3>${extra}
         </div>
-        <div className="space-y-3">{children}</div>
+        <div class="space-y-3">${children}</div>
       </section>
-    );
+    `;
 
+    // ---------- Weekly Review modal ----------
     function ReviewModal({onClose, tasks, updateTask}) {
       const today = startOfDay(new Date());
       const doneThisWeek = tasks.filter(t=>t.status==='Done'&&t.completedAt&&new Date(t.completedAt)>=addDays(today,-6)&&!t.archived);
       const overdue = tasks.filter(t=>t.status!=='Done'&&t.dueDate&&new Date(t.dueDate)<today&&!t.archived);
       const stale = tasks.filter(t=>t.status!=='Done'&&!t.archived&&(!t.dueDate||new Date(t.createdAt)<addDays(today,-14)));
+      const [step,setStep] = useState(1);
 
       const archiveDone = ()=>{ doneThisWeek.forEach(t=>updateTask(t.id,{archived:true})); setStep(2); };
       const resched = when=>{
         const base=startOfDay(new Date()); let target=new Date(base);
         if(when==='tomorrow') target=addDays(base,1);
-        if(when==='nextWeek') target=addDays(base,7-(base.getDay()||7)+1); // next Monday
+        if(when==='nextWeek') target=addDays(base,7-(base.getDay()||7)+1);
         target.setHours(9,0,0,0);
         overdue.forEach(t=>updateTask(t.id,{dueDate:target.toISOString(), rollovers:(t.rollovers||0)+1}));
         setStep(3);
@@ -112,40 +114,43 @@
         onClose();
       };
 
-      const [step,setStep]=useState(1);
-      return (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-2xl border bg-white p-5 dark:bg-zinc-950">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="text-lg font-semibold">Weekly Review</div>
-              <button className="text-sm text-zinc-500" onClick={onClose}>Close</button>
+      return html`
+        <div class="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+          <div class="w-full max-w-2xl rounded-2xl border bg-white p-5">
+            <div class="mb-4 flex items-center justify-between">
+              <div class="text-lg font-semibold">Weekly Review</div>
+              <button class="text-sm text-zinc-500" onClick=${onClose}>Close</button>
             </div>
-            {step===1 && (<div>
-              <div className="mb-2 font-medium">1) Close Done (this week)</div>
-              <p className="text-sm text-zinc-500 mb-3">Archive {doneThisWeek.length} completed tasks.</p>
-              <button className="rounded-lg bg-black text-white px-4 py-2" onClick={archiveDone}>Archive {doneThisWeek.length}</button>
-            </div>)}
-            {step===2 && (<div>
-              <div className="mb-2 font-medium">2) Reschedule Overdue</div>
-              <p className="text-sm text-zinc-500 mb-3">{overdue.length} tasks are overdue.</p>
-              <div className="flex gap-2">
-                <button className="rounded-lg border px-3 py-1" onClick={()=>resched('tomorrow')}>Tomorrow 9:00</button>
-                <button className="rounded-lg border px-3 py-1" onClick={()=>resched('nextWeek')}>Next Monday 9:00</button>
-              </div>
-            </div>)}
-            {step===3 && (<div>
-              <div className="mb-2 font-medium">3) Clean Stale</div>
-              <p className="text-sm text-zinc-500 mb-3">Archive {stale.length} stale tasks (no due date or ≥14 days old).</p>
-              <button className="rounded-lg border px-3 py-1" onClick={archiveStale}>Archive Stale</button>
-            </div>)}
-            {step===4 && (<div>
-              <div className="mb-2 font-medium">4) Set Focus-6</div>
-              <p className="text-sm text-zinc-500 mb-3">We will auto-fill remaining Focus slots with your top items.</p>
-              <button className="rounded-lg bg-black text-white px-4 py-2" onClick={setFocus}>Fill Focus</button>
-            </div>)}
+            ${step===1 && html`
+              <div>
+                <div class="mb-2 font-medium">1) Close Done (this week)</div>
+                <p class="text-sm text-zinc-500 mb-3">Archive ${doneThisWeek.length} completed tasks.</p>
+                <button class="rounded-lg bg-black text-white px-4 py-2" onClick=${archiveDone}>Archive ${doneThisWeek.length}</button>
+              </div>`}
+            ${step===2 && html`
+              <div>
+                <div class="mb-2 font-medium">2) Reschedule Overdue</div>
+                <p class="text-sm text-zinc-500 mb-3">${overdue.length} tasks are overdue.</p>
+                <div class="flex gap-2">
+                  <button class="rounded-lg border px-3 py-1" onClick=${()=>resched('tomorrow')}>Tomorrow 9:00</button>
+                  <button class="rounded-lg border px-3 py-1" onClick=${()=>resched('nextWeek')}>Next Monday 9:00</button>
+                </div>
+              </div>`}
+            ${step===3 && html`
+              <div>
+                <div class="mb-2 font-medium">3) Clean Stale</div>
+                <p class="text-sm text-zinc-500 mb-3">Archive ${stale.length} stale tasks (no due date or ≥14 days old).</p>
+                <button class="rounded-lg border px-3 py-1" onClick=${archiveStale}>Archive Stale</button>
+              </div>`}
+            ${step===4 && html`
+              <div>
+                <div class="mb-2 font-medium">4) Set Focus-6</div>
+                <p class="text-sm text-zinc-500 mb-3">We will auto-fill remaining Focus slots with your top items.</p>
+                <button class="rounded-lg bg-black text-white px-4 py-2" onClick=${setFocus}>Fill Focus</button>
+              </div>`}
           </div>
         </div>
-      );
+      `;
     }
 
     // ---------- App ----------
@@ -156,9 +161,10 @@
       const [showReview,setShowReview]=useState(false);
       const [dark,setDark]=useState(state.theme==='dark');
 
-      useEffect(()=>{ saveState({...state, theme:dark?'dark':'light'}); },[state, dark]);
+      // persist
+      useEffect(()=>{ saveState({...state, theme:dark?'dark':'light'}); document.documentElement.classList.toggle('dark', dark); },[state,dark]);
 
-      // Auto-rollover at 7pm (while the app is open)
+      // 7pm auto-rollover (while app is open)
       useEffect(()=>{
         const doRollover=()=>{
           const todayStart=startOfDay(new Date());
@@ -167,7 +173,7 @@
             if(!t.archived && t.status!=='Done' && t.dueDate){
               const dd=new Date(t.dueDate);
               if(dd>=todayStart && dd<=todayEnd){
-                const tomorrow=addDays(todayStart, 1); tomorrow.setHours(9,0,0,0);
+                const tomorrow=addDays(todayStart,1); tomorrow.setHours(9,0,0,0);
                 return {...t, dueDate:tomorrow.toISOString(), rollovers:(t.rollovers||0)+1};
               }
             }
@@ -228,99 +234,96 @@
         }; r.readAsText(file);
       };
 
-      // Views
+      // ---- Views ----
       const AddBar = ()=>{
         const [title,setTitle]=useState(''); const [due,setDue]=useState(''); const [priority,setPriority]=useState('Med'); const [project,setProject]=useState(projects[0]?.id||'');
-        return (
-          <div className="flex flex-col md:flex-row gap-2 md:items-end rounded-2xl border p-3 bg-white/70 dark:bg-zinc-900/70">
-            <div className="flex-1">
-              <label className="text-xs text-zinc-500">Title</label>
-              <input className="w-full rounded-lg border p-2 bg-white dark:bg-zinc-900" placeholder="Add a task..." value={title} onChange={e=>setTitle(e.target.value)}/>
+        return html`
+          <div class="flex flex-col md:flex-row gap-2 md:items-end rounded-2xl border p-3 bg-white/70">
+            <div class="flex-1">
+              <label class="text-xs text-zinc-500">Title</label>
+              <input class="w-full rounded-lg border p-2 bg-white" placeholder="Add a task..." .value=${title} onInput=${e=>setTitle(e.target.value)}/>
             </div>
-            <div><label className="text-xs text-zinc-500">Due</label><input type="date" className="rounded-lg border p-2 bg-white dark:bg-zinc-900" value={due} onChange={e=>setDue(e.target.value)}/></div>
-            <div><label className="text-xs text-zinc-500">Priority</label>
-              <select className="rounded-lg border p-2 bg-white dark:bg-zinc-900" value={priority} onChange={e=>setPriority(e.target.value)}>
+            <div><label class="text-xs text-zinc-500">Due</label><input type="date" class="rounded-lg border p-2 bg-white" .value=${due} onInput=${e=>setDue(e.target.value)}/></div>
+            <div><label class="text-xs text-zinc-500">Priority</label>
+              <select class="rounded-lg border p-2 bg-white" .value=${priority} onChange=${e=>setPriority(e.target.value)}>
                 <option>Low</option><option>Med</option><option>High</option>
               </select>
             </div>
-            <div><label className="text-xs text-zinc-500">Project</label>
-              <select className="rounded-lg border p-2 bg-white dark:bg-zinc-900" value={project} onChange={e=>setProject(e.target.value)}>
-                {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            <div><label class="text-xs text-zinc-500">Project</label>
+              <select class="rounded-lg border p-2 bg-white" .value=${project} onChange=${e=>setProject(e.target.value)}>
+                ${projects.map(p=>html`<option value=${p.id}>${p.name}</option>`)}
               </select>
             </div>
-            <button className="rounded-lg bg-black text-white px-4 py-2"
-              onClick={()=>{ if(!title.trim()) return; const d=due?new Date(due):null; addTask({title,priority,project,dueDate:d?d.toISOString():null}); setTitle(''); setDue(''); }}>
+            <button class="rounded-lg bg-black text-white px-4 py-2"
+              onClick=${()=>{ if(!title.trim()) return; const d=due?new Date(due):null; addTask({title,priority,project,dueDate:d?d.toISOString():null}); setTitle(''); setDue(''); }}>
               Add
             </button>
           </div>
-        );
+        `;
       };
 
-      const TodayView = ()=>(
+      const TodayView = ()=>html`
         <div>
-          <AddBar/>
-          <Section title={`Focus (${focusTasks.length}/6)`} extra={<span className="text-xs text-zinc-400">Pin tasks to fill your Focus list.</span>}>
-            {focusTasks.length? focusTasks.map(t=><TaskItem key={t.id} t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>):
-              <div className="rounded-xl border p-4 text-sm text-zinc-500">No focus tasks yet. Pin up to six.</div>}
-          </Section>
-          <Section title={`Overdue (${overdueTasks.length})`}>
-            {overdueTasks.length? overdueTasks.map(t=><TaskItem key={t.id} t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>):
-              <div className="rounded-xl border p-4 text-sm text-zinc-500">Zero overdue—nice.</div>}
-          </Section>
-          <Section title={`Today (${todayTasks.length})`}>
-            {todayTasks.length? todayTasks.map(t=><TaskItem key={t.id} t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>):
-              <div className="rounded-xl border p-4 text-sm text-zinc-500">Nothing due today. Add something above or plan your week.</div>}
-          </Section>
+          <${AddBar}/>
+          <${Section} title=${`Focus (${focusTasks.length}/6)`} extra=${html`<span class="text-xs text-zinc-400">Pin tasks to fill your Focus list.</span>`}>
+            ${focusTasks.length? focusTasks.map(t=>html`<${TaskItem} key=${t.id} t=${t} updateTask=${updateTask} deleteTask=${deleteTask} projects=${projects}/>`):
+              html`<div class="rounded-xl border p-4 text-sm text-zinc-500">No focus tasks yet. Pin up to six.</div>`}
+          <//>
+          <${Section} title=${`Overdue (${overdueTasks.length})`}>
+            ${overdueTasks.length? overdueTasks.map(t=>html`<${TaskItem} key=${t.id} t=${t} updateTask=${updateTask} deleteTask=${deleteTask} projects=${projects}/>`):
+              html`<div class="rounded-xl border p-4 text-sm text-zinc-500">Zero overdue—nice.</div>`}
+          <//>
+          <${Section} title=${`Today (${todayTasks.length})`}>
+            ${todayTasks.length? todayTasks.map(t=>html`<${TaskItem} key=${t.id} t=${t} updateTask=${updateTask} deleteTask=${deleteTask} projects=${projects}/>`):
+              html`<div class="rounded-xl border p-4 text-sm text-zinc-500">Nothing due today. Add something above or plan your week.</div>`}
+          <//>
         </div>
-      );
+      `;
 
-      const WeekView = ()=>(
+      const WeekView = ()=>html`
         <div>
-          {week.map(d=>{
+          ${week.map(d=>{
             const list=filtered.filter(t=>t.dueDate && isSameDay(new Date(t.dueDate),d) && t.status!=='Done');
-            return (
-              <Section key={String(d)} title={`${fmtDate(d)} • ${list.length}`}>
-                {list.length? list.map(t=><TaskItem key={t.id} t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>):
-                  <div className="rounded-xl border p-4 text-sm text-zinc-500">No tasks.</div>}
-              </Section>
-            );
+            return html`<${Section} key=${String(d)} title=${`${fmtDate(d)} • ${list.length}`}>
+              ${list.length? list.map(t=>html`<${TaskItem} key=${t.id} t=${t} updateTask=${updateTask} deleteTask=${deleteTask} projects=${projects}/>`):
+                html`<div class="rounded-xl border p-4 text-sm text-zinc-500">No tasks.</div>`}
+            <//>`;
           })}
         </div>
-      );
+      `;
 
       const ProjectsView = ()=>{
         const [sel,setSel]=useState('all');
         const list=tasks.filter(t=>sel==='all'?true:t.project===sel);
         const byStatus=s=>list.filter(t=>t.status===s);
         const onDrop=(e,status)=>{ const id=e.dataTransfer.getData('text'); if(id) updateTask(id,{status, completedAt:status==='Done'?nowISO():null}); };
-        const Col=({title,status})=>(
-          <div onDragOver={e=>e.preventDefault()} onDrop={e=>onDrop(e,status)} className="flex-1 rounded-2xl border p-3 min-h-[200px] bg-white/60 dark:bg-zinc-900/60">
-            <div className="mb-2 text-xs font-medium uppercase text-zinc-500">{title} ({byStatus(status).length})</div>
-            <div className="space-y-3">
-              {byStatus(status).map(t=>(
-                <div key={t.id} draggable onDragStart={e=>e.dataTransfer.setData('text', t.id)} className="cursor-grab active:cursor-grabbing">
-                  <TaskItem t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>
-                </div>
-              ))}
+        const Col = ({title,status})=>html`
+          <div onDragOver=${e=>e.preventDefault()} onDrop=${e=>onDrop(e,status)} class="flex-1 rounded-2xl border p-3 min-h-[200px] bg-white/60">
+            <div class="mb-2 text-xs font-medium uppercase text-zinc-500">${title} (${byStatus(status).length})</div>
+            <div class="space-y-3">
+              ${byStatus(status).map(t=>html`
+                <div key=${t.id} draggable onDragStart=${e=>e.dataTransfer.setData('text', t.id)} class="cursor-grab active:cursor-grabbing">
+                  <${TaskItem} t=${t} updateTask=${updateTask} deleteTask=${deleteTask} projects=${projects}/>
+                </div>`)}
             </div>
           </div>
-        );
-        return (
+        `;
+        return html`
           <div>
-            <div className="mb-3 flex items-center gap-2">
-              <label className="text-xs text-zinc-500">Project</label>
-              <select className="rounded-lg border p-2 bg-white dark:bg-zinc-900" value={sel} onChange={e=>setSel(e.target.value)}>
+            <div class="mb-3 flex items-center gap-2">
+              <label class="text-xs text-zinc-500">Project</label>
+              <select class="rounded-lg border p-2 bg-white" .value=${sel} onChange=${e=>setSel(e.target.value)}>
                 <option value="all">All</option>
-                {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                ${projects.map(p=>html`<option value=${p.id}>${p.name}</option>`)}
               </select>
             </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <Col title="Todo"  status="Todo"/>
-              <Col title="Doing" status="Doing"/>
-              <Col title="Done"  status="Done"/>
+            <div class="grid gap-3 md:grid-cols-3">
+              <${Col} title="Todo"  status="Todo"/>
+              <${Col} title="Doing" status="Doing"/>
+              <${Col} title="Done"  status="Done"/>
             </div>
           </div>
-        );
+        `;
       };
 
       const CalendarView = ()=>{
@@ -329,38 +332,35 @@
         const start=addDays(first, -((first.getDay()+6)%7)); // Monday grid
         const days=Array.from({length:42},(_,i)=>addDays(start,i));
         const tasksByDay = d => filtered.filter(t=>t.dueDate && isSameDay(new Date(t.dueDate), d));
-        return (
+        return html`
           <div>
-            <div className="mb-3 flex items-center justify-between">
-              <div className="font-semibold">{ref.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</div>
-              <div className="flex gap-2">
-                <button className="rounded-lg border px-3 py-1" onClick={()=>setRef(addDays(ref,-30))}>Prev</button>
-                <button className="rounded-lg border px-3 py-1" onClick={()=>setRef(new Date())}>Today</button>
-                <button className="rounded-lg border px-3 py-1" onClick={()=>setRef(addDays(ref,30))}>Next</button>
+            <div class="mb-3 flex items-center justify-between">
+              <div class="font-semibold">${ref.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</div>
+              <div class="flex gap-2">
+                <button class="rounded-lg border px-3 py-1" onClick=${()=>setRef(addDays(ref,-30))}>Prev</button>
+                <button class="rounded-lg border px-3 py-1" onClick=${()=>setRef(new Date())}>Today</button>
+                <button class="rounded-lg border px-3 py-1" onClick=${()=>setRef(addDays(ref,30))}>Next</button>
               </div>
             </div>
-            <div className="grid grid-cols-7 gap-2">
-              {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><div key={d} className="text-xs text-zinc-500">{d}</div>)}
-              {days.map((d,i)=>{
+            <div class="grid grid-cols-7 gap-2">
+              ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>html`<div class="text-xs text-zinc-500">${d}</div>`)}
+              ${days.map((d,i)=>{
                 const list=tasksByDay(d); const inMonth=d.getMonth()===ref.getMonth();
-                return (
-                  <div key={i} className={`rounded-xl border p-2 ${inMonth?'bg-white/60 dark:bg-zinc-900/60':'bg-zinc-50 dark:bg-zinc-800/40'} min-h-[92px]`}
-                       onDoubleClick={()=>addTask({title:'New task', dueDate:d.toISOString()})}>
-                    <div className="mb-1 text-xs flex justify-between">
-                      <span className="font-medium">{d.getDate()}</span>
-                      {list.length>0 && <span className="text-[10px]">{list.length}</span>}
+                return html`
+                  <div key=${i} class="rounded-xl border p-2 ${inMonth?'bg-white/60':'bg-zinc-50'} min-h-[92px]"
+                       onDblClick=${()=>addTask({title:'New task', dueDate:d.toISOString()})}>
+                    <div class="mb-1 text-xs flex justify-between">
+                      <span class="font-medium">${d.getDate()}</span>
+                      ${list.length>0 && html`<span class="text-[10px]">${list.length}</span>`}
                     </div>
-                    <div className="space-y-1">
-                      {list.slice(0,3).map(t=>(
-                        <div key={t.id} className="truncate rounded bg-black/5 dark:bg-white/10 px-2 py-0.5 text-[11px]">{t.title}</div>
-                      ))}
+                    <div class="space-y-1">
+                      ${list.slice(0,3).map(t=>html`<div class="truncate rounded bg-black/5 px-2 py-0.5 text-[11px]">${t.title}</div>`)}
                     </div>
-                  </div>
-                );
+                  </div>`;
               })}
             </div>
           </div>
-        );
+        `;
       };
 
       const ReportsView = ()=>{
@@ -382,118 +382,106 @@
           return arr.map(([label,value])=>{ cum+=value; return {label,value,cumPct:Math.round(cum/total*100)}; });
         },[tasks, projects]);
 
-        const KPI = ({label, value}) => (
-          <div className="rounded-2xl border p-4 bg-white/70 dark:bg-zinc-900/70">
-            <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-            <div className="mt-1 text-2xl font-semibold">{value}</div>
-          </div>
-        );
+        const KPI = ({label, value}) => html`
+          <div class="rounded-2xl border p-4 bg-white/70"><div class="text-xs uppercase tracking-wide text-zinc-500">${label}</div><div class="mt-1 text-2xl font-semibold">${value}</div></div>
+        `;
 
-        return (
-          <div className="space-y-6">
-            <div className="grid gap-3 md:grid-cols-4">
-              <KPI label="Completion Rate" value={`${completionRate}%`}/>
-              <KPI label="Done Today" value={String(doneToday)}/>
-              <KPI label="Velocity (7d avg)" value={velocity.toFixed(1)}/>
-              <KPI label="Tasks Total" value={String(tasks.length)}/>
+        return html`
+          <div class="space-y-6">
+            <div class="grid gap-3 md:grid-cols-4">
+              <${KPI} label="Completion Rate" value=${`${completionRate}%`}/>
+              <${KPI} label="Done Today" value=${String(doneToday)}/>
+              <${KPI} label="Velocity (7d avg)" value=${velocity.toFixed(1)}/>
+              <${KPI} label="Tasks Total" value=${String(tasks.length)}/>
             </div>
 
-            <div className="rounded-2xl border p-4">
-              <div className="mb-2 text-sm font-semibold">Overdue Pareto (by Project)</div>
-              {pareto.length ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="rounded-2xl border p-4">
+              <div class="mb-2 text-sm font-semibold">Overdue Pareto (by Project)</div>
+              ${pareto.length ? html`
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    {pareto.map(r=>(
-                      <div key={r.label} className="flex items-center gap-2 py-1">
-                        <div className="w-28 text-xs text-zinc-600">{r.label}</div>
-                        <div className="flex-1 bg-zinc-200 dark:bg-zinc-800 rounded h-2 overflow-hidden">
-                          <div className="bg-zinc-900 dark:bg-zinc-100 h-2" style={{width:`${r.value/Math.max(1, pareto[0].value)*100}%`}}></div>
-                        </div>
-                        <div className="w-10 text-right text-xs">{r.value}</div>
-                      </div>
-                    ))}
+                    ${pareto.map(r=>html`
+                      <div class="flex items-center gap-2 py-1">
+                        <div class="w-28 text-xs text-zinc-600">${r.label}</div>
+                        <div class="flex-1 bg-zinc-200 rounded h-2 overflow-hidden"><div class="bg-zinc-900 h-2" style=${{width:`${r.value/Math.max(1,pareto[0].value)*100}%`}}></div></div>
+                        <div class="w-10 text-right text-xs">${r.value}</div>
+                      </div>`)}
                   </div>
-                  <div className="space-y-2">
-                    {pareto.map(r=>(
-                      <div key={r.label} className="flex items-center gap-2 text-xs">
-                        <div className="w-28 text-zinc-600">{r.label}</div>
-                        <div className="flex-1 bg-zinc-200 dark:bg-zinc-800 rounded h-2 overflow-hidden">
-                          <div className="bg-teal-500 h-2" style={{width:`${r.cumPct}%`}}></div>
-                        </div>
-                        <div className="w-12 text-right">{r.cumPct}%</div>
-                      </div>
-                    ))}
-                    <div className="text-xs text-zinc-500">Look for the point where cumulative % crosses 80% — those projects create most overdue tasks.</div>
+                  <div class="space-y-2">
+                    ${pareto.map(r=>html`
+                      <div class="flex items-center gap-2 text-xs">
+                        <div class="w-28 text-zinc-600">${r.label}</div>
+                        <div class="flex-1 bg-zinc-200 rounded h-2 overflow-hidden"><div class="bg-teal-500 h-2" style=${{width:`${r.cumPct}%`}}></div></div>
+                        <div class="w-12 text-right">${r.cumPct}%</div>
+                      </div>`)}
+                    <div class="text-xs text-zinc-500">Look for where cumulative % crosses 80%.</div>
                   </div>
-                </div>
-              ) : <div className="text-sm text-zinc-500">No overdue tasks 🎉</div>}
+                </div>` : html`<div class="text-sm text-zinc-500">No overdue tasks 🎉</div>`}
             </div>
 
-            <div className="rounded-2xl border p-4">
-              <div className="mb-2 text-sm font-semibold">Weekly Review</div>
-              <p className="text-sm text-zinc-500 mb-3">Run a 4-step cleanup: close done, reschedule overdue, archive stale, set Focus-6.</p>
-              <button className="rounded-lg bg-black text-white px-4 py-2" onClick={()=>setShowReview(true)}>Start Review</button>
-              {showReview && <ReviewModal onClose={()=>setShowReview(false)} tasks={tasks} updateTask={updateTask}/>}
+            <div class="rounded-2xl border p-4">
+              <div class="mb-2 text-sm font-semibold">Weekly Review</div>
+              <p class="text-sm text-zinc-500 mb-3">Run a 4-step cleanup: close done, reschedule overdue, archive stale, set Focus-6.</p>
+              <button class="rounded-lg bg-black text-white px-4 py-2" onClick=${()=>setShowReview(true)}>Start Review</button>
             </div>
 
-            <div className="rounded-2xl border p-4">
-              <div className="mb-2 text-sm font-semibold">Backups & Data</div>
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <button className="rounded-lg border px-3 py-1" onClick={exportCSV}>Export CSV</button>
-                <label className="rounded-lg border px-3 py-1 cursor-pointer">Import CSV
-                  <input type="file" accept=".csv" className="hidden" onChange={importCSV}/>
+            <div class="rounded-2xl border p-4">
+              <div class="mb-2 text-sm font-semibold">Backups & Data</div>
+              <div class="flex flex-wrap items-center gap-3 text-sm">
+                <button class="rounded-lg border px-3 py-1" onClick=${exportCSV}>Export CSV</button>
+                <label class="rounded-lg border px-3 py-1 cursor-pointer">Import CSV
+                  <input type="file" accept=".csv" class="hidden" onChange=${importCSV}/>
                 </label>
               </div>
             </div>
           </div>
-        );
+        `;
       };
 
-      // ---------- Shell ----------
-      const tabs = ['Today','Week','Projects','Calendar','Reports'];
+      const tabs=['Today','Week','Projects','Calendar','Reports'];
 
-      return (
-        <div className={dark?'dark':''}>
-          <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-            <div className="mx-auto max-w-5xl px-4 py-6">
-              <header className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="text-xl font-extrabold">TaskPulse</div>
-                  <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs text-teal-600 dark:text-teal-400">Personal</span>
+      return html`
+        <div class=${dark?'dark':''}>
+          <div class="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+            <div class="mx-auto max-w-5xl px-4 py-6">
+              <header class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="text-xl font-extrabold">TaskPulse</div>
+                  <span class="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs text-teal-600">Personal</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input className="rounded-lg border bg-white/70 px-3 py-1.5 text-sm dark:bg-zinc-900/70"
-                         placeholder="Search…" value={query} onChange={e=>setQuery(e.target.value)} />
-                  <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={()=>setDark(d=>!d)}>{dark?'Light':'Dark'}</button>
+                <div class="flex items-center gap-2">
+                  <input class="rounded-lg border bg-white/70 px-3 py-1.5 text-sm" placeholder="Search…" .value=${query} onInput=${e=>setQuery(e.target.value)} />
+                  <button class="rounded-lg border px-3 py-1.5 text-sm" onClick=${()=>setDark(d=>!d)}>${dark?'Light':'Dark'}</button>
                 </div>
               </header>
 
-              <nav className="mt-4 flex flex-wrap gap-2">
-                {tabs.map(t=>(
-                  <button key={t} onClick={()=>setTab(t)}
-                    className={`rounded-full border px-3 py-1.5 text-sm ${tab===t?'bg-black text-white dark:bg-white dark:text-black':''}`}>{t}</button>
-                ))}
-                <button className="ml-auto rounded-full border px-3 py-1.5 text-sm" onClick={()=>setShowReview(true)}>Weekly Review</button>
+              <nav class="mt-4 flex flex-wrap gap-2">
+                ${tabs.map(t=>html`
+                  <button onClick=${()=>setTab(t)}
+                    class=${`rounded-full border px-3 py-1.5 text-sm ${tab===t?'bg-black text-white':''}`}>${t}</button>`)}
+                <button class="ml-auto rounded-full border px-3 py-1.5 text-sm" onClick=${()=>setShowReview(true)}>Weekly Review</button>
               </nav>
 
-              <main className="mt-4">
-                {tab==='Today'    && <TodayView/>}
-                {tab==='Week'     && <WeekView/>}
-                {tab==='Projects' && <ProjectsView/>}
-                {tab==='Calendar' && <CalendarView/>}
-                {tab==='Reports'  && <ReportsView/>}
+              <main class="mt-4">
+                ${tab==='Today'&&html`<${TodayView}/>`}
+                ${tab==='Week'&&html`<${WeekView}/>`}
+                ${tab==='Projects'&&html`<${ProjectsView}/>`}
+                ${tab==='Calendar'&&html`<${CalendarView}/>`}
+                ${tab==='Reports'&&html`<${ReportsView}/>`}
               </main>
 
-              <footer className="mt-10 grid gap-2 text-center text-xs text-zinc-500">
+              <footer class="mt-10 grid gap-2 text-center text-xs text-zinc-500">
                 <div>Local-first • Offline friendly • CSV import/export • Auto-rollover at 7pm</div>
               </footer>
             </div>
           </div>
+
+          ${showReview && html`<${ReviewModal} onClose=${()=>setShowReview(false)} tasks=${tasks} updateTask=${updateTask}/>`}
         </div>
-      );
+      `;
     }
 
-    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    render(h(App, {}), document.getElementById('root'));
   </script>
 </body>
 </html>

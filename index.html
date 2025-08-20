@@ -4,18 +4,24 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>TaskPulse — Personal To-Do</title>
+
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 UMD -->
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel for in-browser JSX transform -->
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+
   <style>html,body{height:100%}body{margin:0}</style>
 </head>
 <body>
   <div id="root"></div>
 
-  <!-- React 18 UMD + Babel (for in-browser JSX) -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <script type="text/babel">
+  <!-- App -->
+  <script type="text/babel" data-presets="env,react">
     const {useState, useEffect, useMemo} = React;
 
     // ---------- Helpers ----------
@@ -161,7 +167,7 @@
             if(!t.archived && t.status!=='Done' && t.dueDate){
               const dd=new Date(t.dueDate);
               if(dd>=todayStart && dd<=todayEnd){
-                const tomorrow=addDays(todayStart,1); tomorrow.setHours(9,0,0,0);
+                const tomorrow=addDays(todayStart, 1); tomorrow.setHours(9,0,0,0);
                 return {...t, dueDate:tomorrow.toISOString(), rollovers:(t.rollovers||0)+1};
               }
             }
@@ -250,4 +256,244 @@
         );
       };
 
-      const TodayVi
+      const TodayView = ()=>(
+        <div>
+          <AddBar/>
+          <Section title={`Focus (${focusTasks.length}/6)`} extra={<span className="text-xs text-zinc-400">Pin tasks to fill your Focus list.</span>}>
+            {focusTasks.length? focusTasks.map(t=><TaskItem key={t.id} t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>):
+              <div className="rounded-xl border p-4 text-sm text-zinc-500">No focus tasks yet. Pin up to six.</div>}
+          </Section>
+          <Section title={`Overdue (${overdueTasks.length})`}>
+            {overdueTasks.length? overdueTasks.map(t=><TaskItem key={t.id} t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>):
+              <div className="rounded-xl border p-4 text-sm text-zinc-500">Zero overdue—nice.</div>}
+          </Section>
+          <Section title={`Today (${todayTasks.length})`}>
+            {todayTasks.length? todayTasks.map(t=><TaskItem key={t.id} t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>):
+              <div className="rounded-xl border p-4 text-sm text-zinc-500">Nothing due today. Add something above or plan your week.</div>}
+          </Section>
+        </div>
+      );
+
+      const WeekView = ()=>(
+        <div>
+          {week.map(d=>{
+            const list=filtered.filter(t=>t.dueDate && isSameDay(new Date(t.dueDate),d) && t.status!=='Done');
+            return (
+              <Section key={String(d)} title={`${fmtDate(d)} • ${list.length}`}>
+                {list.length? list.map(t=><TaskItem key={t.id} t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>):
+                  <div className="rounded-xl border p-4 text-sm text-zinc-500">No tasks.</div>}
+              </Section>
+            );
+          })}
+        </div>
+      );
+
+      const ProjectsView = ()=>{
+        const [sel,setSel]=useState('all');
+        const list=tasks.filter(t=>sel==='all'?true:t.project===sel);
+        const byStatus=s=>list.filter(t=>t.status===s);
+        const onDrop=(e,status)=>{ const id=e.dataTransfer.getData('text'); if(id) updateTask(id,{status, completedAt:status==='Done'?nowISO():null}); };
+        const Col=({title,status})=>(
+          <div onDragOver={e=>e.preventDefault()} onDrop={e=>onDrop(e,status)} className="flex-1 rounded-2xl border p-3 min-h-[200px] bg-white/60 dark:bg-zinc-900/60">
+            <div className="mb-2 text-xs font-medium uppercase text-zinc-500">{title} ({byStatus(status).length})</div>
+            <div className="space-y-3">
+              {byStatus(status).map(t=>(
+                <div key={t.id} draggable onDragStart={e=>e.dataTransfer.setData('text', t.id)} className="cursor-grab active:cursor-grabbing">
+                  <TaskItem t={t} updateTask={updateTask} deleteTask={deleteTask} projects={projects}/>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+        return (
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <label className="text-xs text-zinc-500">Project</label>
+              <select className="rounded-lg border p-2 bg-white dark:bg-zinc-900" value={sel} onChange={e=>setSel(e.target.value)}>
+                <option value="all">All</option>
+                {projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Col title="Todo"  status="Todo"/>
+              <Col title="Doing" status="Doing"/>
+              <Col title="Done"  status="Done"/>
+            </div>
+          </div>
+        );
+      };
+
+      const CalendarView = ()=>{
+        const [ref,setRef]=useState(new Date());
+        const first=new Date(ref.getFullYear(), ref.getMonth(), 1);
+        const start=addDays(first, -((first.getDay()+6)%7)); // Monday grid
+        const days=Array.from({length:42},(_,i)=>addDays(start,i));
+        const tasksByDay = d => filtered.filter(t=>t.dueDate && isSameDay(new Date(t.dueDate), d));
+        return (
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="font-semibold">{ref.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</div>
+              <div className="flex gap-2">
+                <button className="rounded-lg border px-3 py-1" onClick={()=>setRef(addDays(ref,-30))}>Prev</button>
+                <button className="rounded-lg border px-3 py-1" onClick={()=>setRef(new Date())}>Today</button>
+                <button className="rounded-lg border px-3 py-1" onClick={()=>setRef(addDays(ref,30))}>Next</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 gap-2">
+              {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><div key={d} className="text-xs text-zinc-500">{d}</div>)}
+              {days.map((d,i)=>{
+                const list=tasksByDay(d); const inMonth=d.getMonth()===ref.getMonth();
+                return (
+                  <div key={i} className={`rounded-xl border p-2 ${inMonth?'bg-white/60 dark:bg-zinc-900/60':'bg-zinc-50 dark:bg-zinc-800/40'} min-h-[92px]`}
+                       onDoubleClick={()=>addTask({title:'New task', dueDate:d.toISOString()})}>
+                    <div className="mb-1 text-xs flex justify-between">
+                      <span className="font-medium">{d.getDate()}</span>
+                      {list.length>0 && <span className="text-[10px]">{list.length}</span>}
+                    </div>
+                    <div className="space-y-1">
+                      {list.slice(0,3).map(t=>(
+                        <div key={t.id} className="truncate rounded bg-black/5 dark:bg-white/10 px-2 py-0.5 text-[11px]">{t.title}</div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      };
+
+      const ReportsView = ()=>{
+        const totalDue = tasks.filter(t=>t.dueDate && new Date(t.dueDate) <= addDays(today,0)).length;
+        const completionRate = totalDue ? Math.round(tasks.filter(t=>t.status==='Done' && t.dueDate && new Date(t.dueDate) <= addDays(today,0)).length / totalDue * 100) : 0;
+        const doneToday = tasks.filter(t=>t.completedAt && isSameDay(new Date(t.completedAt), today)).length;
+        const velocity = (tasks.filter(t=>t.completedAt && new Date(t.completedAt) >= addDays(today,-6)).length / 7);
+
+        const pareto = useMemo(()=>{
+          const map=new Map();
+          tasks.forEach(t=>{
+            if(t.status==='Done' || !t.dueDate || new Date(t.dueDate) >= today) return;
+            const p=projects.find(p=>p.id===t.project)?.name || 'No Project';
+            map.set(p,(map.get(p)||0)+1);
+          });
+          const arr=[...map.entries()].sort((a,b)=>b[1]-a[1]);
+          const total=arr.reduce((s,[,c])=>s+c,0)||1;
+          let cum=0;
+          return arr.map(([label,value])=>{ cum+=value; return {label,value,cumPct:Math.round(cum/total*100)}; });
+        },[tasks, projects]);
+
+        const KPI = ({label, value}) => (
+          <div className="rounded-2xl border p-4 bg-white/70 dark:bg-zinc-900/70">
+            <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
+            <div className="mt-1 text-2xl font-semibold">{value}</div>
+          </div>
+        );
+
+        return (
+          <div className="space-y-6">
+            <div className="grid gap-3 md:grid-cols-4">
+              <KPI label="Completion Rate" value={`${completionRate}%`}/>
+              <KPI label="Done Today" value={String(doneToday)}/>
+              <KPI label="Velocity (7d avg)" value={velocity.toFixed(1)}/>
+              <KPI label="Tasks Total" value={String(tasks.length)}/>
+            </div>
+
+            <div className="rounded-2xl border p-4">
+              <div className="mb-2 text-sm font-semibold">Overdue Pareto (by Project)</div>
+              {pareto.length ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    {pareto.map(r=>(
+                      <div key={r.label} className="flex items-center gap-2 py-1">
+                        <div className="w-28 text-xs text-zinc-600">{r.label}</div>
+                        <div className="flex-1 bg-zinc-200 dark:bg-zinc-800 rounded h-2 overflow-hidden">
+                          <div className="bg-zinc-900 dark:bg-zinc-100 h-2" style={{width:`${r.value/Math.max(1, pareto[0].value)*100}%`}}></div>
+                        </div>
+                        <div className="w-10 text-right text-xs">{r.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    {pareto.map(r=>(
+                      <div key={r.label} className="flex items-center gap-2 text-xs">
+                        <div className="w-28 text-zinc-600">{r.label}</div>
+                        <div className="flex-1 bg-zinc-200 dark:bg-zinc-800 rounded h-2 overflow-hidden">
+                          <div className="bg-teal-500 h-2" style={{width:`${r.cumPct}%`}}></div>
+                        </div>
+                        <div className="w-12 text-right">{r.cumPct}%</div>
+                      </div>
+                    ))}
+                    <div className="text-xs text-zinc-500">Look for the point where cumulative % crosses 80% — those projects create most overdue tasks.</div>
+                  </div>
+                </div>
+              ) : <div className="text-sm text-zinc-500">No overdue tasks 🎉</div>}
+            </div>
+
+            <div className="rounded-2xl border p-4">
+              <div className="mb-2 text-sm font-semibold">Weekly Review</div>
+              <p className="text-sm text-zinc-500 mb-3">Run a 4-step cleanup: close done, reschedule overdue, archive stale, set Focus-6.</p>
+              <button className="rounded-lg bg-black text-white px-4 py-2" onClick={()=>setShowReview(true)}>Start Review</button>
+              {showReview && <ReviewModal onClose={()=>setShowReview(false)} tasks={tasks} updateTask={updateTask}/>}
+            </div>
+
+            <div className="rounded-2xl border p-4">
+              <div className="mb-2 text-sm font-semibold">Backups & Data</div>
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <button className="rounded-lg border px-3 py-1" onClick={exportCSV}>Export CSV</button>
+                <label className="rounded-lg border px-3 py-1 cursor-pointer">Import CSV
+                  <input type="file" accept=".csv" className="hidden" onChange={importCSV}/>
+                </label>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // ---------- Shell ----------
+      const tabs = ['Today','Week','Projects','Calendar','Reports'];
+
+      return (
+        <div className={dark?'dark':''}>
+          <div className="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+            <div className="mx-auto max-w-5xl px-4 py-6">
+              <header className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="text-xl font-extrabold">TaskPulse</div>
+                  <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs text-teal-600 dark:text-teal-400">Personal</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input className="rounded-lg border bg-white/70 px-3 py-1.5 text-sm dark:bg-zinc-900/70"
+                         placeholder="Search…" value={query} onChange={e=>setQuery(e.target.value)} />
+                  <button className="rounded-lg border px-3 py-1.5 text-sm" onClick={()=>setDark(d=>!d)}>{dark?'Light':'Dark'}</button>
+                </div>
+              </header>
+
+              <nav className="mt-4 flex flex-wrap gap-2">
+                {tabs.map(t=>(
+                  <button key={t} onClick={()=>setTab(t)}
+                    className={`rounded-full border px-3 py-1.5 text-sm ${tab===t?'bg-black text-white dark:bg-white dark:text-black':''}`}>{t}</button>
+                ))}
+                <button className="ml-auto rounded-full border px-3 py-1.5 text-sm" onClick={()=>setShowReview(true)}>Weekly Review</button>
+              </nav>
+
+              <main className="mt-4">
+                {tab==='Today'    && <TodayView/>}
+                {tab==='Week'     && <WeekView/>}
+                {tab==='Projects' && <ProjectsView/>}
+                {tab==='Calendar' && <CalendarView/>}
+                {tab==='Reports'  && <ReportsView/>}
+              </main>
+
+              <footer className="mt-10 grid gap-2 text-center text-xs text-zinc-500">
+                <div>Local-first • Offline friendly • CSV import/export • Auto-rollover at 7pm</div>
+              </footer>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

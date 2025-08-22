@@ -13,9 +13,10 @@
     } catch {}
   </script>
 
-  <!-- Tailwind (Play CDN) in class-based dark mode -->
-  <script>window.tailwind = window.tailwind || {}; window.tailwind.config = { darkMode: 'class' };</script>
+  <!-- Tailwind (Play CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- IMPORTANT: config AFTER the CDN -->
+  <script>tailwind.config = { darkMode: 'class' };</script>
 
   <!-- Preact + Hooks + HTM (UMD) -->
   <script src="https://cdn.jsdelivr.net/npm/preact@10.23.2/dist/preact.umd.js"></script>
@@ -28,7 +29,7 @@
   <div id="root"></div>
 
   <script>
-    // ---- CDN sanity check (prevents mysterious blank page) ----
+    // ---- CDN sanity check ----
     (function(){
       const el = document.getElementById('root');
       if (!window.preact) { el.textContent = 'Failed to load Preact from CDN.'; throw new Error('preact missing'); }
@@ -36,12 +37,11 @@
       if (!window.htm) { el.textContent = 'Failed to load htm from CDN.'; throw new Error('htm missing'); }
     })();
 
-    // Aliases
     const { h, render } = preact;
     const { useState, useEffect, useMemo } = preactHooks;
     const html = htm.bind(h);
 
-    // ---------- Helpers ----------
+    // Helpers
     const LS_KEY = 'taskpulse-v1';
     const nowISO = () => new Date().toISOString();
     const startOfDay = d => { const x=new Date(d); x.setHours(0,0,0,0); return x; };
@@ -49,7 +49,7 @@
     const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
     const fmtDate = d => new Date(d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
 
-    // ---------- Demo data ----------
+    // Demo data
     const demoProjects = [
       { id:'p1', name:'Personal', color:'#29B1A8' },
       { id:'p2', name:'Work',     color:'#7C5CFF' },
@@ -66,7 +66,7 @@
     };
     const saveState = s => localStorage.setItem(LS_KEY, JSON.stringify(s));
 
-    // ---------- Tiny UI atoms ----------
+    // UI atoms
     const Tag = ({children}) => html`<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">${children}</span>`;
 
     const TaskItem = ({t, updateTask, deleteTask, projects}) => html`
@@ -104,7 +104,6 @@
       </section>
     `;
 
-    // ---------- Weekly Review modal ----------
     function ReviewModal({onClose, tasks, updateTask}) {
       const today = startOfDay(new Date());
       const doneThisWeek = tasks.filter(t=>t.status==='Done'&&t.completedAt&&new Date(t.completedAt)>=addDays(today,-6)&&!t.archived);
@@ -170,7 +169,6 @@
       `;
     }
 
-    // ---------- App ----------
     function App(){
       const [state,setState]=useState(loadState());
       const [tab,setTab]=useState('Today');
@@ -178,13 +176,14 @@
       const [showReview,setShowReview]=useState(false);
       const [dark,setDark]=useState(state.theme==='dark');
 
-      // persist + toggle html.dark
+      // Persist theme + toggle html.dark (depend ONLY on `dark`)
       useEffect(()=>{
         saveState({...state, theme: dark ? 'dark' : 'light'});
         document.documentElement.classList.toggle('dark', dark);
-      },[state,dark]);
+        // eslint-disable-next-line
+      }, [dark]);
 
-      // 7pm auto-rollover (while app is open)
+      // 7pm auto-rollover
       useEffect(()=>{
         const doRollover=()=>{
           const todayStart=startOfDay(new Date());
@@ -236,7 +235,7 @@
       const overdueTasks = filtered.filter(t=>t.status!=='Done' && t.dueDate && new Date(t.dueDate) < today);
       const focusTasks = filtered.filter(t=>t.isFocus).sort((a,b)=>(a.focusOrder||0)-(b.focusOrder||0)).slice(0,6);
 
-      // CSV export/import
+      // CSV
       const exportCSV = ()=>{
         const fields=['id','title','status','priority','project','tags','dueDate','estimateMins','actualMins','isFocus','completedAt','archived','rollovers','createdAt'];
         const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
@@ -259,7 +258,7 @@
         }; r.readAsText(file);
       };
 
-      // ---- Views ----
+      // Views
       const AddBar = ()=>{
         const [title,setTitle]=useState(''); const [due,setDue]=useState(''); const [priority,setPriority]=useState('Med'); const [project,setProject]=useState(projects[0]?.id||'');
         return html`
@@ -514,7 +513,6 @@
       `;
     }
 
-    // Mount once
     render(h(App, {}), document.getElementById('root'));
   </script>
 </body>

@@ -5,10 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>TaskPulse — Personal To-Do</title>
 
-  <!-- Tailwind config: must be BEFORE the CDN so dark mode uses 'class' -->
+  <!-- Apply saved theme ASAP to avoid a flash -->
   <script>
-    window.tailwind = { config: { darkMode: 'class' } };
+    try {
+      const s = JSON.parse(localStorage.getItem('taskpulse-v1'));
+      if (s && s.theme === 'dark') document.documentElement.classList.add('dark');
+    } catch {}
   </script>
+
+  <!-- Tailwind (Play CDN) in class-based dark mode -->
+  <script>window.tailwind = window.tailwind || {}; window.tailwind.config = { darkMode: 'class' };</script>
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Preact + Hooks + HTM (UMD) -->
@@ -18,16 +24,16 @@
 
   <style>html,body{height:100%}body{margin:0}</style>
 </head>
-<body class="bg-zinc-100 text-zinc-900">
+<body class="bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
   <div id="root"></div>
 
   <script>
-    // ---- CDN sanity check: shows a message instead of a blank page if something failed to load
+    // ---- CDN sanity check (prevents mysterious blank page) ----
     (function(){
       const el = document.getElementById('root');
-      if (!window.preact) { el.textContent = 'Failed to load Preact UMD from CDN.'; throw new Error('preact missing'); }
-      if (!window.preactHooks) { el.textContent = 'Failed to load Preact Hooks UMD from CDN.'; throw new Error('preactHooks missing'); }
-      if (!window.htm) { el.textContent = 'Failed to load htm UMD from CDN.'; throw new Error('htm missing'); }
+      if (!window.preact) { el.textContent = 'Failed to load Preact from CDN.'; throw new Error('preact missing'); }
+      if (!window.preactHooks) { el.textContent = 'Failed to load Preact Hooks from CDN.'; throw new Error('preactHooks missing'); }
+      if (!window.htm) { el.textContent = 'Failed to load htm from CDN.'; throw new Error('htm missing'); }
     })();
 
     // Aliases
@@ -64,7 +70,7 @@
     const Tag = ({children}) => html`<span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">${children}</span>`;
 
     const TaskItem = ({t, updateTask, deleteTask, projects}) => html`
-      <div class="group flex items-start gap-3 rounded-xl border p-3 hover:shadow-sm bg-white/70">
+      <div class="group flex items-start gap-3 rounded-xl border p-3 hover:shadow-sm bg-white/70 dark:bg-white/10">
         <input type="checkbox" class="mt-1 h-4 w-4"
           checked=${t.status==='Done'}
           onChange=${e=>updateTask(t.id,{status:e.target.checked?'Done':'Todo',completedAt:e.target.checked?nowISO():null})}/>
@@ -75,16 +81,16 @@
             ${t.priority && html`<${Tag}>${t.priority}<//>`}
             ${t.isFocus && html`<${Tag}>Focus<//>`}
           </div>
-          <div class="mt-1 text-xs text-zinc-500 flex flex-wrap items-center gap-2">
+          <div class="mt-1 text-xs text-zinc-500 dark:text-zinc-400 flex flex-wrap items-center gap-2">
             ${t.project && html`<span>Project: ${projects.find(p=>p.id===t.project)?.name}</span>`}
             ${t.dueDate && html`<span>Due: ${fmtDate(t.dueDate)}</span>`}
             ${t.tags?.length ? html`<span>#${t.tags.join(' #')}</span>` : null}
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <button class="rounded-lg border px-2 py-1 text-xs"
+          <button type="button" class="rounded-lg border px-2 py-1 text-xs"
                   onClick=${()=>updateTask(t.id,{isFocus:!t.isFocus, focusOrder:t.isFocus?0:Date.now()})}>${t.isFocus?'Unpin':'Pin'}</button>
-          <button class="rounded-lg border px-2 py-1 text-xs" onClick=${()=>deleteTask(t.id)}>Delete</button>
+          <button type="button" class="rounded-lg border px-2 py-1 text-xs" onClick=${()=>deleteTask(t.id)}>Delete</button>
         </div>
       </div>
     `;
@@ -92,7 +98,7 @@
     const Section = ({title, extra, children}) => html`
       <section class="mt-6">
         <div class="mb-2 flex items-center justify-between">
-          <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500">${title}</h3>${extra}
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">${title}</h3>${extra}
         </div>
         <div class="space-y-3">${children}</div>
       </section>
@@ -127,37 +133,37 @@
 
       return html`
         <div class="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
-          <div class="w-full max-w-2xl rounded-2xl border bg-white p-5">
+          <div class="w-full max-w-2xl rounded-2xl border bg-white dark:bg-zinc-900 p-5">
             <div class="mb-4 flex items-center justify-between">
               <div class="text-lg font-semibold">Weekly Review</div>
-              <button class="text-sm text-zinc-500" onClick=${onClose}>Close</button>
+              <button type="button" class="text-sm text-zinc-500" onClick=${onClose}>Close</button>
             </div>
             ${step===1 && html`
               <div>
                 <div class="mb-2 font-medium">1) Close Done (this week)</div>
                 <p class="text-sm text-zinc-500 mb-3">Archive ${doneThisWeek.length} completed tasks.</p>
-                <button class="rounded-lg bg-black text-white px-4 py-2" onClick=${archiveDone}>Archive ${doneThisWeek.length}</button>
+                <button type="button" class="rounded-lg bg-black text-white px-4 py-2" onClick=${archiveDone}>Archive ${doneThisWeek.length}</button>
               </div>`}
             ${step===2 && html`
               <div>
                 <div class="mb-2 font-medium">2) Reschedule Overdue</div>
                 <p class="text-sm text-zinc-500 mb-3">${overdue.length} tasks are overdue.</p>
                 <div class="flex gap-2">
-                  <button class="rounded-lg border px-3 py-1" onClick=${()=>resched('tomorrow')}>Tomorrow 9:00</button>
-                  <button class="rounded-lg border px-3 py-1" onClick=${()=>resched('nextWeek')}>Next Monday 9:00</button>
+                  <button type="button" class="rounded-lg border px-3 py-1" onClick=${()=>resched('tomorrow')}>Tomorrow 9:00</button>
+                  <button type="button" class="rounded-lg border px-3 py-1" onClick=${()=>resched('nextWeek')}>Next Monday 9:00</button>
                 </div>
               </div>`}
             ${step===3 && html`
               <div>
                 <div class="mb-2 font-medium">3) Clean Stale</div>
                 <p class="text-sm text-zinc-500 mb-3">Archive ${stale.length} stale tasks (no due date or ≥14 days old).</p>
-                <button class="rounded-lg border px-3 py-1" onClick=${archiveStale}>Archive Stale</button>
+                <button type="button" class="rounded-lg border px-3 py-1" onClick=${archiveStale}>Archive Stale</button>
               </div>`}
             ${step===4 && html`
               <div>
                 <div class="mb-2 font-medium">4) Set Focus-6</div>
                 <p class="text-sm text-zinc-500 mb-3">We will auto-fill remaining Focus slots with your top items.</p>
-                <button class="rounded-lg bg-black text-white px-4 py-2" onClick=${setFocus}>Fill Focus</button>
+                <button type="button" class="rounded-lg bg-black text-white px-4 py-2" onClick=${setFocus}>Fill Focus</button>
               </div>`}
           </div>
         </div>
@@ -172,8 +178,11 @@
       const [showReview,setShowReview]=useState(false);
       const [dark,setDark]=useState(state.theme==='dark');
 
-      // persist
-      useEffect(()=>{ saveState({...state, theme:dark?'dark':'light'}); document.documentElement.classList.toggle('dark', dark); },[state,dark]);
+      // persist + toggle html.dark
+      useEffect(()=>{
+        saveState({...state, theme: dark ? 'dark' : 'light'});
+        document.documentElement.classList.toggle('dark', dark);
+      },[state,dark]);
 
       // 7pm auto-rollover (while app is open)
       useEffect(()=>{
@@ -227,7 +236,7 @@
       const overdueTasks = filtered.filter(t=>t.status!=='Done' && t.dueDate && new Date(t.dueDate) < today);
       const focusTasks = filtered.filter(t=>t.isFocus).sort((a,b)=>(a.focusOrder||0)-(b.focusOrder||0)).slice(0,6);
 
-      // CSV
+      // CSV export/import
       const exportCSV = ()=>{
         const fields=['id','title','status','priority','project','tags','dueDate','estimateMins','actualMins','isFocus','completedAt','archived','rollovers','createdAt'];
         const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
@@ -238,9 +247,14 @@
       const importCSV = e=>{
         const file=e.target.files && e.target.files[0]; if(!file) return;
         const r=new FileReader(); r.onload=()=>{
-          const text=r.result; const [header,...lines]=String(text).split(/\r?\n/).filter(Boolean);
+          const text=String(r.result||''); const [header,...lines]=text.split(/\r?\n/).filter(Boolean);
           const fields=header.split(','); const parseCell=s=>s.replace(/^"|"$/g,'').replace(/""/g,'"');
-          const items=lines.map(line=>{ const cells=line.match(/"(?:[^"]|"")*"|[^,]+/g)||[]; const o={}; fields.forEach((f,i)=>o[f]=parseCell(cells[i]||'')); if(o.tags) o.tags=o.tags.split('|').filter(Boolean); return o; });
+          const items=lines.map(line=>{
+            const cells=line.match(/"(?:[^"]|"")*"|[^,]+/g)||[];
+            const o={}; fields.forEach((f,i)=>o[f]=parseCell(cells[i]||''));
+            if(o.tags) o.tags=o.tags.split('|').filter(Boolean);
+            return o;
+          });
           setState(s=>({...s, tasks: items.map(t=>({...t, isFocus:t.isFocus==='true'||t.isFocus===true}))}));
         }; r.readAsText(file);
       };
@@ -249,23 +263,28 @@
       const AddBar = ()=>{
         const [title,setTitle]=useState(''); const [due,setDue]=useState(''); const [priority,setPriority]=useState('Med'); const [project,setProject]=useState(projects[0]?.id||'');
         return html`
-          <div class="flex flex-col md:flex-row gap-2 md:items-end rounded-2xl border p-3 bg-white/70">
+          <div class="flex flex-col md:flex-row gap-2 md:items-end rounded-2xl border p-3 bg-white/70 dark:bg-white/10">
             <div class="flex-1">
               <label class="text-xs text-zinc-500">Title</label>
-              <input class="w-full rounded-lg border p-2 bg-white" placeholder="Add a task..." value=${title} onInput=${e=>setTitle(e.target.value)}/>
+              <input class="w-full rounded-lg border p-2 bg-white dark:bg-zinc-900" placeholder="Add a task..." value=${title} onInput=${e=>setTitle(e.target.value)}/>
             </div>
-            <div><label class="text-xs text-zinc-500">Due</label><input type="date" class="rounded-lg border p-2 bg-white" value=${due} onInput=${e=>setDue(e.target.value)}/></div>
-            <div><label class="text-xs text-zinc-500">Priority</label>
-              <select class="rounded-lg border p-2 bg-white" value=${priority} onChange=${e=>setPriority(e.target.value)}>
+            <div>
+              <label class="text-xs text-zinc-500">Due</label>
+              <input type="date" class="rounded-lg border p-2 bg-white dark:bg-zinc-900" value=${due} onInput=${e=>setDue(e.target.value)}/>
+            </div>
+            <div>
+              <label class="text-xs text-zinc-500">Priority</label>
+              <select class="rounded-lg border p-2 bg-white dark:bg-zinc-900" value=${priority} onChange=${e=>setPriority(e.target.value)}>
                 <option>Low</option><option>Med</option><option>High</option>
               </select>
             </div>
-            <div><label class="text-xs text-zinc-500">Project</label>
-              <select class="rounded-lg border p-2 bg-white" value=${project} onChange=${e=>setProject(e.target.value)}>
+            <div>
+              <label class="text-xs text-zinc-500">Project</label>
+              <select class="rounded-lg border p-2 bg-white dark:bg-zinc-900" value=${project} onChange=${e=>setProject(e.target.value)}>
                 ${projects.map(p=>html`<option value=${p.id}>${p.name}</option>`)}
               </select>
             </div>
-            <button class="rounded-lg bg-black text-white px-4 py-2"
+            <button type="button" class="rounded-lg bg-black text-white px-4 py-2"
               onClick=${()=>{ if(!title.trim()) return; const d=due?new Date(due):null; addTask({title,priority,project,dueDate:d?d.toISOString():null}); setTitle(''); setDue(''); }}>
               Add
             </button>
@@ -307,13 +326,13 @@
         const [sel,setSel]=useState('all');
         const list=tasks.filter(t=>sel==='all'?true:t.project===sel);
         const byStatus=s=>list.filter(t=>t.status===s);
-        const onDrop=(e,status)=>{ const id=e.dataTransfer.getData('text'); if(id) updateTask(id,{status, completedAt:status==='Done'?nowISO():null}); };
+        const onDrop=(e,status)=>{ e.preventDefault(); const id=e.dataTransfer.getData('text'); if(id) updateTask(id,{status, completedAt:status==='Done'?nowISO():null}); };
         const Col = ({title,status})=>html`
-          <div onDragOver=${e=>e.preventDefault()} onDrop=${e=>onDrop(e,status)} class="flex-1 rounded-2xl border p-3 min-h-[200px] bg-white/60">
-            <div class="mb-2 text-xs font-medium uppercase text-zinc-500">${title} (${byStatus(status).length})</div>
+          <div onDragOver=${e=>e.preventDefault()} onDrop=${e=>onDrop(e,status)} class="flex-1 rounded-2xl border p-3 min-h-[200px] bg-white/60 dark:bg-white/10">
+            <div class="mb-2 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">${title} (${byStatus(status).length})</div>
             <div class="space-y-3">
               ${byStatus(status).map(t=>html`
-                <div key=${t.id} draggable onDragStart=${e=>e.dataTransfer.setData('text', t.id)} class="cursor-grab active:cursor-grabbing">
+                <div key=${t.id} draggable="true" onDragStart=${e=>e.dataTransfer.setData('text', t.id)} class="cursor-grab active:cursor-grabbing">
                   <${TaskItem} t=${t} updateTask=${updateTask} deleteTask=${deleteTask} projects=${projects}/>
                 </div>`)}
             </div>
@@ -323,7 +342,7 @@
           <div>
             <div class="mb-3 flex items-center gap-2">
               <label class="text-xs text-zinc-500">Project</label>
-              <select class="rounded-lg border p-2 bg-white" value=${sel} onChange=${e=>setSel(e.target.value)}>
+              <select class="rounded-lg border p-2 bg-white dark:bg-zinc-900" value=${sel} onChange=${e=>setSel(e.target.value)}>
                 <option value="all">All</option>
                 ${projects.map(p=>html`<option value=${p.id}>${p.name}</option>`)}
               </select>
@@ -348,24 +367,24 @@
             <div class="mb-3 flex items-center justify-between">
               <div class="font-semibold">${ref.toLocaleDateString(undefined,{month:'long',year:'numeric'})}</div>
               <div class="flex gap-2">
-                <button class="rounded-lg border px-3 py-1" onClick=${()=>setRef(addDays(ref,-30))}>Prev</button>
-                <button class="rounded-lg border px-3 py-1" onClick=${()=>setRef(new Date())}>Today</button>
-                <button class="rounded-lg border px-3 py-1" onClick=${()=>setRef(addDays(ref,30))}>Next</button>
+                <button type="button" class="rounded-lg border px-3 py-1" onClick=${()=>setRef(addDays(ref,-30))}>Prev</button>
+                <button type="button" class="rounded-lg border px-3 py-1" onClick=${()=>setRef(new Date())}>Today</button>
+                <button type="button" class="rounded-lg border px-3 py-1" onClick=${()=>setRef(addDays(ref,30))}>Next</button>
               </div>
             </div>
             <div class="grid grid-cols-7 gap-2">
-              ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>html`<div class="text-xs text-zinc-500">${d}</div>`)}
+              ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>html`<div class="text-xs text-zinc-500 dark:text-zinc-400">${d}</div>`)}
               ${days.map((d,i)=>{
                 const list=tasksByDay(d); const inMonth=d.getMonth()===ref.getMonth();
                 return html`
-                  <div key=${i} class="rounded-xl border p-2 ${inMonth?'bg-white/60':'bg-zinc-50'} min-h-[92px]"
+                  <div key=${i} class="rounded-xl border p-2 ${inMonth?'bg-white/60 dark:bg-white/10':'bg-zinc-50 dark:bg-zinc-900/40'} min-h-[92px]"
                        onDblClick=${()=>addTask({title:'New task', dueDate:d.toISOString()})}>
                     <div class="mb-1 text-xs flex justify-between">
                       <span class="font-medium">${d.getDate()}</span>
                       ${list.length>0 && html`<span class="text-[10px]">${list.length}</span>`}
                     </div>
                     <div class="space-y-1">
-                      ${list.slice(0,3).map(t=>html`<div class="truncate rounded bg-black/5 px-2 py-0.5 text-[11px]">${t.title}</div>`)}
+                      ${list.slice(0,3).map(t=>html`<div class="truncate rounded bg-black/5 dark:bg-white/10 px-2 py-0.5 text-[11px]">${t.title}</div>`)}
                     </div>
                   </div>`;
               })}
@@ -394,7 +413,10 @@
         },[tasks, projects]);
 
         const KPI = ({label, value}) => html`
-          <div class="rounded-2xl border p-4 bg-white/70"><div class="text-xs uppercase tracking-wide text-zinc-500">${label}</div><div class="mt-1 text-2xl font-semibold">${value}</div></div>
+          <div class="rounded-2xl border p-4 bg-white/70 dark:bg-white/10">
+            <div class="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">${label}</div>
+            <div class="mt-1 text-2xl font-semibold">${value}</div>
+          </div>
         `;
 
         return html`
@@ -413,19 +435,19 @@
                   <div>
                     ${pareto.map(r=>html`
                       <div class="flex items-center gap-2 py-1">
-                        <div class="w-28 text-xs text-zinc-600">${r.label}</div>
-                        <div class="flex-1 bg-zinc-200 rounded h-2 overflow-hidden"><div class="h-2" style=${{background:'currentColor', width:`${r.value/Math.max(1,pareto[0].value)*100}%`}}></div></div>
+                        <div class="w-28 text-xs text-zinc-600 dark:text-zinc-400">${r.label}</div>
+                        <div class="flex-1 bg-zinc-200 dark:bg-zinc-800 rounded h-2 overflow-hidden"><div class="h-2" style=${{background:'currentColor', width:`${r.value/Math.max(1,pareto[0].value)*100}%`}}></div></div>
                         <div class="w-10 text-right text-xs">${r.value}</div>
                       </div>`)}
                   </div>
                   <div class="space-y-2">
                     ${pareto.map(r=>html`
                       <div class="flex items-center gap-2 text-xs">
-                        <div class="w-28 text-zinc-600">${r.label}</div>
-                        <div class="flex-1 bg-zinc-200 rounded h-2 overflow-hidden"><div class="h-2" style=${{background:'currentColor', width:`${r.cumPct}%`}}></div></div>
+                        <div class="w-28 text-zinc-600 dark:text-zinc-400">${r.label}</div>
+                        <div class="flex-1 bg-zinc-200 dark:bg-zinc-800 rounded h-2 overflow-hidden"><div class="h-2" style=${{background:'currentColor', width:`${r.cumPct}%`}}></div></div>
                         <div class="w-12 text-right">${r.cumPct}%</div>
                       </div>`)}
-                    <div class="text-xs text-zinc-500">Look for where cumulative % crosses 80%.</div>
+                    <div class="text-xs text-zinc-500 dark:text-zinc-400">Look for where cumulative % crosses 80%.</div>
                   </div>
                 </div>` : html`<div class="text-sm text-zinc-500">No overdue tasks 🎉</div>`}
             </div>
@@ -433,13 +455,13 @@
             <div class="rounded-2xl border p-4">
               <div class="mb-2 text-sm font-semibold">Weekly Review</div>
               <p class="text-sm text-zinc-500 mb-3">Run a 4-step cleanup: close done, reschedule overdue, archive stale, set Focus-6.</p>
-              <button class="rounded-lg bg-black text-white px-4 py-2" onClick=${()=>setShowReview(true)}>Start Review</button>
+              <button type="button" class="rounded-lg bg-black text-white px-4 py-2" onClick=${()=>setShowReview(true)}>Start Review</button>
             </div>
 
             <div class="rounded-2xl border p-4">
               <div class="mb-2 text-sm font-semibold">Backups & Data</div>
               <div class="flex flex-wrap items-center gap-3 text-sm">
-                <button class="rounded-lg border px-3 py-1" onClick=${exportCSV}>Export CSV</button>
+                <button type="button" class="rounded-lg border px-3 py-1" onClick=${exportCSV}>Export CSV</button>
                 <label class="rounded-lg border px-3 py-1 cursor-pointer">Import CSV
                   <input type="file" accept=".csv" class="hidden" onChange=${importCSV}/>
                 </label>
@@ -451,51 +473,48 @@
 
       const tabs=['Today','Week','Projects','Calendar','Reports'];
 
-      function AppShell(){
-        return html`
-          <div class=${dark?'dark':''}>
-            <div class="min-h-screen bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-              <div class="mx-auto max-w-5xl px-4 py-6">
-                <header class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <div class="text-xl font-extrabold">TaskPulse</div>
-                    <span class="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs text-teal-600">Personal</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <input class="rounded-lg border bg-white/70 px-3 py-1.5 text-sm" placeholder="Search…" value=${query} onInput=${e=>setQuery(e.target.value)} />
-                    <button class="rounded-lg border px-3 py-1.5 text-sm" onClick=${()=>setDark(d=>!d)}>${dark?'Light':'Dark'}</button>
-                  </div>
-                </header>
+      return html`
+        <div>
+          <div class="min-h-screen">
+            <div class="mx-auto max-w-5xl px-4 py-6">
+              <header class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="text-xl font-extrabold">TaskPulse</div>
+                  <span class="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs text-teal-600">Personal</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <input class="rounded-lg border bg-white/70 dark:bg-zinc-900 px-3 py-1.5 text-sm" placeholder="Search…" value=${query} onInput=${e=>setQuery(e.target.value)} />
+                  <button type="button" class="rounded-lg border px-3 py-1.5 text-sm" onClick=${()=>setDark(d=>!d)}>${dark?'Light':'Dark'}</button>
+                </div>
+              </header>
 
-                <nav class="mt-4 flex flex-wrap gap-2">
-                  ${tabs.map(t=>html`
-                    <button onClick=${()=>setTab(t)}
-                      class=${`rounded-full border px-3 py-1.5 text-sm ${tab===t?'bg-black text-white':''}`}>${t}</button>`)}
-                  <button class="ml-auto rounded-full border px-3 py-1.5 text-sm" onClick=${()=>setShowReview(true)}>Weekly Review</button>
-                </nav>
+              <nav class="mt-4 flex flex-wrap gap-2">
+                ${tabs.map(t=>html`
+                  <button type="button" onClick=${()=>setTab(t)}
+                    class=${`rounded-full border px-3 py-1.5 text-sm ${tab===t?'bg-black text-white':''}`}>${t}</button>`)}
+                <button type="button" class="ml-auto rounded-full border px-3 py-1.5 text-sm" onClick=${()=>setShowReview(true)}>Weekly Review</button>
+              </nav>
 
-                <main class="mt-4">
-                  ${tab==='Today'&&html`<${TodayView}/>`}
-                  ${tab==='Week'&&html`<${WeekView}/>`}
-                  ${tab==='Projects'&&html`<${ProjectsView}/>`}
-                  ${tab==='Calendar'&&html`<${CalendarView}/>`}
-                  ${tab==='Reports'&&html`<${ReportsView}/>`}
-                </main>
+              <main class="mt-4">
+                ${tab==='Today'&&html`<${TodayView}/>`}
+                ${tab==='Week'&&html`<${WeekView}/>`}
+                ${tab==='Projects'&&html`<${ProjectsView}/>`}
+                ${tab==='Calendar'&&html`<${CalendarView}/>`}
+                ${tab==='Reports'&&html`<${ReportsView}/>`}
+              </main>
 
-                <footer class="mt-10 grid gap-2 text-center text-xs text-zinc-500">
-                  <div>Local-first • Offline friendly • CSV import/export • Auto-rollover at 7pm</div>
-                </footer>
-              </div>
+              <footer class="mt-10 grid gap-2 text-center text-xs text-zinc-500 dark:text-zinc-400">
+                <div>Local-first • Offline friendly • CSV import/export • Auto-rollover at 7pm</div>
+              </footer>
             </div>
-
-            ${showReview && html`<${ReviewModal} onClose=${()=>setShowReview(false)} tasks=${tasks} updateTask=${updateTask}/>`}
           </div>
-        `;
-      }
 
-      render(h(AppShell, {}), document.getElementById('root'));
+          ${showReview && html`<${ReviewModal} onClose=${()=>setShowReview(false)} tasks=${tasks} updateTask=${updateTask}/>`}
+        </div>
+      `;
     }
 
+    // Mount once
     render(h(App, {}), document.getElementById('root'));
   </script>
 </body>
